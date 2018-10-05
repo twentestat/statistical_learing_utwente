@@ -1,4 +1,4 @@
-# statistical_learning_utwente
+# Statistical Learning course at University of Twente
 
 This repository contains workouts of exercises of the course Statistical Learning in Healthcare at the University of Twente.
 
