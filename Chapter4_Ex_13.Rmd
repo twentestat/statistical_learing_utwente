@@ -1,0 +1,264 @@
+---
+title: "Chapter4_ex_13"
+author: "Karin Groothuis-Oudshoorn"
+date: "october 3rd 2018"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, eval = TRUE, echo = FALSE }
+library(MASS)
+library(tidyverse)
+```
+
+
+In this problem we look again at the `Boston` data set and we will build some models to classify suburbs whether they have a high or low crime rate. A high crime rate is defined as a crime rate above the median crime rate of `r signif(median(Boston$crim), digits =2)` %. 
+
+We will explore the following methods:
+
+1. Logistic regression
+2. Linear Discriminant Analysis
+3. K-Nearest Neighbours
+
+First we will split the dataset into two parts: the training set (70%) and the test set (30%). In this way we can calculate for each method the accuracy rate as estimate of the test error. 
+
+```{r}
+## set seed for reproducibility purposes.
+set.seed(1)
+train <- sample(1:nrow(Boston), size = 0.7*nrow(Boston))
+
+## add column to Boston dataset with indicator of trainingset and dummy variable
+## of high crime rate (high_crime)
+Boston_ext <- Boston %>% 
+  mutate(high_crime = if_else(crim > median(crim), 1,0), 
+         Train = if_else(row_number() %in% train, TRUE, FALSE))
+
+```
+
+
+## Logistic regression
+
+First the logistic regression model is fitted on the trainingset. We can display its results with the functions `summary` and `glance` (the last is in the package `modelr`). Predictions can be augmented to the original data with the `augment` function. 
+
+```{r message=FALSE, warning=FALSE}
+library(broom)
+library(modelr)
+library(boot)
+
+glm.fit <- glm(high_crime ~ zn + indus + chas + nox + rm + age 
+                 + dis + rad + tax + ptratio + black + lstat + medv, 
+               data = Boston_ext, family = "binomial", subset = Train)
+
+summary(glm.fit)
+glance(glm.fit)
+
+## calculate predictions (probabilities)
+Boston_ext <- augment(glm.fit, newdata = Boston_ext, type.predict = "response")
+
+acc <- Boston_ext %>%
+  mutate(glm.pred = if_else(.fitted > 0.5, 1, 0)) %>%
+  filter(!Train) %>%
+  summarise( acc = mean(glm.pred == high_crime), 
+             nr = n())
+
+acc
+
+```
+
+The accuracy of of the logistic regression model where every predictor is in the model equals `r signif(acc, digits = 3)`.
+
+What about the precision of this accuracy estimate? There are two ways to estimate a confidence interval for the accuracy estimate $acc$:
+
+1. Use the formula $se(acc) = \sqrt{\frac{acc (1 - acc)}{n}}$ and then a 95% confidence interval is acc ± 1.96 * se(acc).
+2. Use the non parametric bootstrap: make e.g. 1000 bootstrap samples, repeat the modelling steps (first selecting 70% of the data for training, the rest for the test set and then the glm) and take the 2.5% and 97.5% percentile of the bootstrap distribution of the accuracies. See the code: 
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+fit_glm_on_bootstrap <- function(data, indices) {
+
+  d <- data[indices, ]
+
+  train <- sample(1:nrow(d), size = 0.7*nrow(d))
+  
+  d_ext <- mutate(d, high_crime = if_else(crim > median(crim), 1,0), 
+                  Train = if_else(row_number() %in% train, TRUE, FALSE))
+
+  fit_boot <- glm(high_crime ~ zn + indus + chas + nox + rm + age 
+      + dis + rad + tax + ptratio + black + lstat + medv, 
+      data = d_ext, family = "binomial", subset = Train )
+  
+  d_ext <- augment(fit_boot, newdata = d_ext, type.predict = "response")
+  
+  glm.pred <- if_else(d_ext$.fitted > 0.5, 1, 0)
+  
+  acc1 <- mean(glm.pred == d_ext$high_crime)
+  return(acc1)
+}
+
+results <- boot(data = Boston, statistic = fit_glm_on_bootstrap, R = 1000)
+
+quantile(results$t, c(0.025, 0.5, 0.975))
+
+```
+
+The splitting of the `Boston` dataset into training and test set depends on the random number generator and its seed. Now we will do the splitting of the file 1000 times to assess the variability in the outcome (the accuracy) due to the splitting. 
+
+```{r message=FALSE, warning=FALSE}
+
+acc <- tibble(
+  nr = 1:1000,
+  acc = rep(0,1000)
+)
+
+for (i in 1:1000){
+  train <- sample(1:nrow(Boston), size = 0.5*nrow(Boston))
+
+  Boston_ext <- Boston %>% 
+    mutate(high_crime = if_else(crim > median(crim), 1,0), 
+         Train = if_else(row_number() %in% train, TRUE, FALSE))
+
+
+  glm.fit <- glm(high_crime ~ zn + indus + chas + nox + rm + age 
+                 + dis + rad + tax + ptratio + black + lstat + medv, 
+               data = Boston_ext, family = "binomial", subset = Train)
+
+  pred <- predict(glm.fit, newdata = Boston_ext[!Boston_ext$Train,], type = "response")
+
+  acc$acc[i] <- mean((pred > 0.5) == Boston_ext[!Boston_ext$Train,"high_crime"])
+}
+
+ggplot(data=acc, aes(x = acc)) + 
+  geom_histogram()
+
+```
+
+
+## Linear discriminant analysis
+
+```{r}
+
+set.seed(1)
+train <- sample(1:nrow(Boston), size = 0.7*nrow(Boston))
+
+## with the function slice (from dplyr) you can subset rows based on their 
+## rownumber (that is in the train vector)
+Boston_train <- slice(Boston_ext, train)
+Boston_test <- slice(Boston_ext, -train)
+table(Boston_train$high_crime)
+
+lda.fit <- lda(high_crime ~ zn + indus + chas + nox + rm + age 
+      + dis + rad + tax + ptratio + black + lstat + medv, 
+      data = Boston_train )
+
+lda.pred <- predict(lda.fit, Boston_test)
+
+lda.class <- lda.pred$class
+
+table(lda.class, Boston_test$high_crime)
+mean(lda.class == Boston_test$high_crime)
+
+```
+
+The accuracy of the linear discriminant analysis on the same data as for the logistic regression model is `r signif(mean(lda.class == Boston_test$high_crime), digits = 3) `. 
+
+## K-nearest neighbour
+
+In case of K-nearest neighbour you shouldn't forget to scale all predictors! Otherwise your results will be completely different and worse usually. The reason is that K-nearest neighbour is a method based on the Euclidean distance and if predictors have different scale then the predictor that is much smaller than another predictor will have no influence on the outcome. 
+
+We will predict the class with the k-NN where we vary `k` from 1 to 50. 
+
+```{r}
+library(class)
+
+set.seed(1)
+train <- sample(1:nrow(Boston), size = 0.5*nrow(Boston))
+Boston_names <- colnames(Boston_ext)
+
+## in index we store the columnnames of the predictors.
+index <- names(Boston_ext)[2:14] 
+
+## with mutate_at you can scale all variables from the vector index all at once.
+
+Boston_scale <- Boston_ext %>% 
+  mutate_at(index, funs(scale(.) %>% as.vector)) 
+                             
+train.X <- slice(Boston_scale, train) %>% 
+  select(zn, indus, chas, nox, rm, age, dis, rad, 
+         tax, ptratio, black, lstat, medv)
+test.X <- slice(Boston_scale, -train) %>% 
+  select(zn, indus, chas, nox, rm, age, dis, rad, 
+         tax, ptratio, black, lstat, medv)
+
+## the train and test outcomes should be stored in a matrix and 
+## not in a dataframe or tibble!
+train.Y <- as.matrix(slice(Boston_scale, train) %>% select(high_crime))
+test.Y<- as.matrix(slice(Boston_scale, -train) %>% select(high_crime))
+
+acc <- tibble(
+  k = 1:50,
+  acc = rep(0,50))
+
+for (k in 1:50){
+  knn.pred <- knn(train = train.X, test = test.X, cl = train.Y, k = k)
+  acc$acc[k] <- mean(test.Y == knn.pred)
+}
+
+ggplot(data = acc, aes(x = k, y = acc)) + geom_point()
+
+```
+
+To see whether a different fraction of train versus test set has an influence on the accuracy we will now repeat the splitting for 50%/50% and 70%/30% each a thousand times. We fix the number `k` to 3. 
+
+```{r message=FALSE, warning=FALSE}
+library(gridExtra)
+
+acc <- tibble(
+  nr = 1:1000,
+  acc_50 = rep(0,1000),
+  acc_70 = rep(0,1000)
+)
+
+for (i in 1:1000){
+  train <- sample(1:nrow(Boston), size = 0.5*nrow(Boston))
+
+  train.X <- slice(Boston_scale, train) %>% select(zn:medv)
+  test.X <- slice(Boston_scale, -train) %>% select(zn:medv)
+
+  train.Y <- as.matrix(slice(Boston_scale, train) %>% select(high_crime))
+  test.Y<- as.matrix(slice(Boston_scale, -train) %>% select(high_crime))
+  
+  knn.pred <- knn(train = train.X, test = test.X, cl = train.Y, k = 3)
+  
+  acc$acc_50[i] <- mean(test.Y == knn.pred)
+
+}
+
+for (i in 1:1000){
+  train <- sample(1:nrow(Boston), size = 0.7*nrow(Boston))
+
+  train.X <- slice(Boston_scale, train) %>% select(zn:medv)
+  test.X <- slice(Boston_scale, -train) %>% select(zn:medv)
+
+  train.Y <- as.matrix(slice(Boston_scale, train) %>% select(high_crime))
+  test.Y<- as.matrix(slice(Boston_scale, -train) %>% select(high_crime))
+  
+  knn.pred <- knn(train = train.X, test = test.X, cl = train.Y, k = 3)
+  
+  acc$acc_70[i] <- mean(test.Y == knn.pred)
+
+}
+
+p1 <- ggplot(data=acc, aes(x = acc_50)) + geom_histogram() + 
+  ggtitle("50%/50% split")
+p2 <- ggplot(data=acc, aes(x = acc_70)) + geom_histogram() + 
+  ggtitle("70%/30% split")
+
+grid.arrange(p1,p2)
+
+```
+
+We see that the accuracy is slightly higher in case of the 70%/30% split. Since that is closer to the actual sample size this is a better prediction of the test error. 

@@ -1,0 +1,186 @@
+---
+title: "Chapter2_ex_10"
+author: "Karin Groothuis-Oudshoorn"
+date: "13 september 2018"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exercise 10
+
+First we load the dataset. 
+
+```{r}
+library(MASS)
+head(Boston)
+nrow(Boston)
+ncol(Boston)
+```
+
+### 10(a)
+
+In the dataset `Boston` there are `r nrow(Boston)` rows and `r ncol(Boston)` columns. Each row represents a town in Boston. The columns are the different variables that are in the dataset, these are:
+
+- `crim`: per capita crime rate by town.
+- `zn`: proportion of residential land zoned for lots over 25,000 sq.ft.
+- `indus`: proportion of non-retail business acres per town.
+- `chas`: Charles River dummy variable (= 1 if tract bounds river; 0 otherwise).
+- `nox`: nitrogen oxides concentration (parts per 10 million).
+- `rm`: average number of rooms per dwelling.
+- `age`: proportion of owner-occupied units built prior to 1940.
+- `dis`: weighted mean of distances to five Boston employment centres.
+- `rad`: index of accessibility to radial highways.
+- `tax`: full-value property-tax rate per \$10,000.
+- `ptratio`: pupil-teacher ratio by town.
+- `black`: $1000(Bk - 0.63)^2$ where Bk is the proportion of blacks by town.
+- `lstat`: lower status of the population (percent).
+- `medv`: median value of owner-occupied homes in \$1000s.
+
+### 10(b)
+
+We assume that `crim` is the outcome variable. So we are looking for predictors that are associated with `crim`. 
+
+```{r}
+library(tidyverse)
+library(gridExtra)
+ggplot(data = Boston, aes(x = crim)) + geom_histogram(binwidth = 5)
+# Basic Scatterplot Matrix
+##pairs(~ crim + zn + indus + chas + nox + rm + age + dis + 
+##       rad + tax + ptratio + black + lstat + medv, data = Boston, main="bivariate correlations Boston dataset")
+p1<- ggplot(data = Boston, aes(y = crim, x = zn)) + geom_point()
+p2<- ggplot(data = Boston, aes(y = crim, x = indus)) + geom_point()
+p3<- ggplot(data = Boston, aes(y = crim, x = chas)) + geom_point()
+p4<- ggplot(data = Boston, aes(y = crim, x = nox)) + geom_point()
+p5<- ggplot(data = Boston, aes(y = crim, x = rm)) + geom_point()
+p6<- ggplot(data = Boston, aes(y = crim, x = age)) + geom_point()
+p7<- ggplot(data = Boston, aes(y = crim, x = dis)) + geom_point()
+p8<- ggplot(data = Boston, aes(y = crim, x = rad)) + geom_point()
+p9<- ggplot(data = Boston, aes(y = crim, x = tax)) + geom_point()
+p10<- ggplot(data = Boston, aes(y = crim, x = ptratio)) + geom_point()
+p11<- ggplot(data = Boston, aes(y = crim, x = black)) + geom_point()
+p12<- ggplot(data = Boston, aes(y = crim, x = lstat)) + geom_point()
+p13<- ggplot(data = Boston, aes(y = crim, x = medv)) + geom_point()
+
+grid.arrange(p1,p2,p3,p4, p5, p6, p7, p8,p9, p10, p11, p12, p13,nrow = 5)
+```
+
+```{r }
+library(summarytools)
+view(dfSummary(Boston, graph.col = TRUE), method = "render")
+
+```
+
+
+###10(c)
+
+Are any of the predictors associated with per capita crime rate? If so, explain.
+
+For this we calculate the correlation between per capita crime rate and the other variables. 
+
+```{r}
+
+cor(Boston[,1],Boston[,-1])
+
+```
+
+###10(d)
+
+Do any of the suburbs of Boston appear to have particularly high crime rates? Tax rates? Pupil ratios?
+
+```{r}
+p1 <- ggplot(Boston, aes(x=crim)) + geom_histogram(bins=14)
+p2 <- ggplot(Boston, aes(x=tax)) + geom_histogram(bins=14)
+p3 <- ggplot(Boston, aes(x=ptratio)) + geom_histogram(bins=14)
+grid.arrange(p1,p2,p3,nrow = 1)
+```
+
+To identify those suburbs:
+
+```{r}
+library(dplyr)
+Boston_agg <- Boston %>%
+  mutate(crim_30 = ifelse(crim > 30, 1, 0),
+         tax_600 = ifelse(tax > 600, 1, 0),
+         ptratio_21 = ifelse(ptratio == 21, 1, 0)) %>%
+  summarise(crim_30 = sum(crim_30)/n(),
+            tax_600 = sum(tax_600)/n(),
+            ptratio_21 = sum(ptratio_21)/n())
+
+Boston_agg
+
+```
+So `r signif(100 * Boston_agg$crim_30, digits = 2) ` % of the suburbs has a high crime rate (`crim` > 30%). 
+In `r signif(100*Boston_agg$tax_600, digits = 2) ` % of the suburbs the full-value property-tax rate per \$10,000 is higher than 600. And `r signif(100*Boston_agg$ptratio_21, digits = 2) `  % of the suburbs have a pupil-teacher ratio by town of 21%. 
+
+
+###10(e)
+
+How many of the suburbs in this data set bound the Charles River? 
+
+```{r}
+chas_nr <- summarise(Boston, chas_perc= sum(chas))
+chas_nr
+
+# alternatively
+table(Boston$chas)
+
+```
+The number of suburbs that bound the Charles River is `r chas_nr`, this is `r signif(100* chas_nr/nrow(Boston), digits = 2)`%.
+
+
+###10(f)
+
+What is the median pupil-teacher ratio among the towns in this data set? 
+
+```{r}
+median(Boston$ptratio)
+```
+
+The median pupil-teacher ratio among towns in this data set equals `r median(Boston$ptratio)`. 
+
+###10(g)
+Which suburb of Boston has lowest median value of owner-occupied homes? Answer: suburb no. 399, value of median value of owner-occupied home is 5.
+```{r}
+
+Boston[which.min(Boston$medv),c("crim","medv")]
+
+summarise(Boston, nr = which.min(medv), min = min(medv))
+
+temp <- Boston %>% as_tibble() %>%
+  mutate(nr_suburb = row_number()) %>%
+  filter(medv == min(medv)) 
+
+##select(temp,nr_suburb, medv, crim)
+
+dplyr:::select(temp,nr_suburb, medv, crim)
+
+```
+
+
+###10(h)
+In this data set, how many of the suburbs average more than seven rooms per dwelling? More than eight rooms per dwelling? Comment on the suburbs that average more than eight rooms per dwelling.
+
+
+```{r}
+nrow(Boston[Boston$rm > 7,])
+nrow(Boston[Boston$rm > 8,])
+ggplot(Boston, aes(x=rm)) + geom_histogram(bins = 30)
+```
+
+
+```{r}
+temp <- Boston %>% 
+  mutate(rm7 = (rm > 7), 
+         rm8 = (rm > 8))
+
+
+summarise(temp, rm7 = sum(rm7), rm8 = sum(rm8))
+filter(temp, rm > 8)
+
+
+```
+

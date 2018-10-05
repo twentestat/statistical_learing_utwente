@@ -1,0 +1,124 @@
+---
+title: "Chapter4_ex_5"
+author: "Karin Groothuis-Oudshoorn"
+date: "29 september 2018"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, eval = TRUE, echo = FALSE }
+library(MASS)
+library(tidyverse)
+```
+
+
+```{r}
+
+fit <- glm(default ~ student + balance + income, data = Default)
+
+newdata <- tibble(
+  student = rep("Yes",4),
+  balance = c(835,0,3000,2000),
+  income = c(33516, 1000, 70000, 40000)
+)
+
+set.seed <- 1968
+
+boot.fn <- function(data,index){
+  predict(glm(default ~ student + balance + 
+                income, data = Default, 
+              family = "binomial", 
+              subset = index), newdata = newdata, type = "response")
+}
+
+boot_obj1 <- boot(Default, boot.fn, 100)
+quantile(boot_obj1$t[,4], c(0.025, 0.5, 0.975))
+
+quantile(boot_obj1$t[,1], c(.025, 0.5, 0.975))
+quantile(boot_obj1$t[,2], c(.025, 0.5, 0.975))
+quantile(boot_obj1$t[,3], c(.025, 0.5, 0.975))
+
+
+```
+
+
+balance = 835
+income = 33516
+
+balance = 0
+income   = 1000
+
+balance = 3000
+income = 70000
+
+## Logistic regression
+
+
+
+```{r message=FALSE, warning=FALSE}
+library(broom)
+library(modelr)
+
+
+glm.fit <- glm(high_crime ~ zn + indus + chas + nox + rm + age 
+                 + dis + rad + tax + ptratio + black + lstat + medv, 
+               data = Boston_ext, family = "binomial", subset = Train)
+
+summary(glm.fit)
+glance(glm.fit)
+
+Boston_ext <- augment(glm.fit, newdata = Boston_ext, type.predict = "response")
+
+acc <- Boston_ext %>%
+  mutate(glm.pred = if_else(.fitted > 0.5, 1, 0)) %>%
+  filter(!Train) %>%
+  summarise( acc = mean(glm.pred != high_crime))
+
+acc
+
+```
+
+Suppose we want to repeat this process 1000 times to obtain a confidence interval for the accurancy based on bootstrapping. 
+
+```{r}
+library(dplyr)
+library(rsample)
+library(broom)
+library(purrr)
+
+set.seed(27)
+
+Boston_ext <- Boston %>% 
+  mutate(high_crime = if_else(crim > median(crim), 1,0))
+
+boots <- modelr:::bootstraps(Boston_ext, times = 100)
+boots %>% mutate(., Train = if_else(row_number() %in% train, TRUE, FALSE))
+
+library(tidyverse)
+boots <- boots %>%
+   lmap(~mutate(., Train = if_else(row_number() %in% train, TRUE, FALSE)))
+
+boots <- boots %>% lmap(mutate(Train = if_else(row_number() %in% train, TRUE, FALSE)))
+
+
+fit_glm_on_bootstrap <- function(split) {
+    glm(high_crime ~ zn + indus + chas + nox + rm + age 
+                 + dis + rad + tax + ptratio + black + lstat + medv, 
+        data = analysis(split), family = "binomial")
+}
+
+boot_models <- boots %>% 
+    mutate(model = map(splits, fit_glm_on_bootstrap),
+           coef_info = map(model, tidy))
+
+boot_coefs <- boot_models %>% 
+    unnest(coef_info)
+
+
+```
+
+

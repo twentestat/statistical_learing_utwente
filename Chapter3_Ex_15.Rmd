@@ -1,0 +1,117 @@
+---
+title: "Chapter3_ex_15"
+author: "Karin Groothuis-Oudshoorn"
+date: "18 september 2018"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this problem we look again at the `Boston` data set and we will try to predict per capita crime rate using the other variables in the data set. So per capita crime rate is the response and the other variables are the predictors. 
+
+# 15(a)
+
+```{r message=FALSE, warning=FALSE}
+library(MASS)
+library(ISLR)
+library(broom)
+library(tibble)
+library(tidyverse)
+library(ggrepel)
+
+nm_Boston <- colnames(Boston)
+lm_models <- paste("crim ~ ", nm_Boston[-1], sep = "")
+lm_models_vc <- lapply(lm_models, formula)
+fit_list <- lapply(lm_models, lm, data = Boston)
+sum_list <- lapply(fit_list, summary)
+output <- bind_rows(lapply(sum_list, tidy))
+output <- filter(output, term != "(Intercept)")
+
+output
+ 
+```
+
+Every predictor is statistically significant related with `crime` except for **`r select(filter(output, p.value>=0.05),term)`** (p-value = `r signif(select(filter(output, p.value>=0.05),p.value), digits = 3)`).
+
+# 15(b)
+
+```{r}
+
+fit <- lm(crim ~ ., data = Boston)
+summary(fit)
+hist(resid(fit), nclass = 25)
+plot(fit)
+```
+
+The response `crim` is significantly related at the $p < 0.01$ level with `dis`, `rad` and `medv`. It is significantly related at the $p < 0.05$ level with `zn`, `black`. The R-squared of the model is 45.4%. What strikes from the plot of the residuals is the very skewed distribution. Therefore we transform the response with a log transformation:
+
+
+```{r}
+
+fit2 <- lm(log(crim) ~ ., data = Boston)
+summary(fit2)
+hist(resid(fit2), nclass = 25)
+plot(fit2)
+```
+
+Now the residuals do have a more normal distribution, the R-squared is almost doubled!
+
+# 15(c)
+
+Compare the univariate regression coefficients with the multiple regression coefficients in a graph. 
+
+
+```{r}
+coefs <- tibble(names = output[,1],
+                univariate = output[,2], 
+                multivariate = coef(fit)[-1])
+
+outlier <- coefs %>%
+    filter(univariate > 10)
+
+ggplot(data = coefs, aes(x = univariate, y = multivariate)) + geom_point() + 
+    ggrepel::geom_label_repel(aes(label = names),
+                            data = outlier)
+
+```
+
+The variable `nox` is a clear outlier in this plot. To get a better picture we delete this point (the labelling of the points is done with the package ggrepel):
+
+```{r message=FALSE, warning=FALSE}
+coef2 <- coefs %>%
+    filter(univariate < 10)
+
+ggplot(data = coef2, aes(x = univariate, y = multivariate)) + 
+  geom_point() + 
+  ggrepel::geom_label_repel(aes(label = names), data = coef2)+
+  geom_abline(intercept = 0, slope = 1) +  
+  geom_abline(intercept = 0, slope = 0) + 
+  ylim(-0.5,1.5)
+
+```
+So almost all coefficients are highly corrected when controlling for the other variables. You can see this from the fact that they are all almost zero in the multiple regression model compared to the univariate model. 
+
+# 15(d)
+
+Now we will look for evidence of non-linear associations between any of the predictors and the response. For each predictor $X$ we will fit a model of the form: $Y = \beta_0 + \beta_1 X + \beta_2 X^2 + \beta_3 X^3$. We will use orthogonal polynomials (function `poly`) and we compare the linear model and the cubic model with the `anova` function (see page 116 ISLR).
+
+```{r}
+nm_Boston <- colnames(Boston)[-4] # remove chas: categorical
+
+#small models:
+lm_models <- paste("crim ~ poly(", nm_Boston[-1], ",1)", sep = "")
+lm_models_vc <- lapply(lm_models, formula)
+fit_list <- lapply(lm_models, lm, data = Boston)
+
+#large models:
+lm_models2 <- paste("crim ~ poly(", nm_Boston[-1], ",3)", sep = "")
+lm_models_vc2 <- lapply(lm_models2, formula)
+fit_list2 <- lapply(lm_models2, lm, data = Boston)
+anova_list <- mapply(fit_list, fit_list2, FUN = anova, SIMPLIFY = FALSE)
+anova_list
+
+```
+

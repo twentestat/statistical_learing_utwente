@@ -1,0 +1,78 @@
+---
+title: "Chapter 5, Exercise 8"
+author: "Karin Groothuis-Oudshoorn"
+date: "10/4/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Exercise 8
+
+(a) Generate a simulated data set as follows:
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+set.seed(1)
+
+data <- tibble(
+  x = rnorm(100),
+  y = 2*x^2 + rnorm(100)
+)
+
+```
+
+The number of observations is `r nrow(data)`. The number of predictors is `r ncol(data)-1`. 
+
+(b) Create a scatterplot of $X$ against $Y$. 
+
+```{r}
+ggplot( data = data, aes(x = x, y = y)) + geom_point()
+```
+We see a kwadratic relation between $X$ and $Y$.
+
+c) Set a random seed, and then compute the LOOCV errors that result from fitting the four models using least squares: 
+
+1. $Y = \beta_0 + \beta_1 X$
+2. $Y = \beta_0 + \beta_1 X + \beta_2 X^2$
+3. $Y = \beta_0 + \beta_1 X + \beta_2 X^2 + \beta_3 X^3 $
+4. $Y = \beta_0 + \beta_1 X + \beta_2 X^2 + \beta_3 X^3 + \beta_4 X^4$
+
+
+```{r}
+set.seed(1968)
+cv.error <- tibble(
+  k = 1:4,
+  error = rep(0,4))
+
+for (i in 1:4){
+  fit <- glm(y ~ poly(x,i), data = data)
+  cv.error$error[i] <- cv.glm(data, fit)$delta[1]
+}
+cv.error
+ggplot(data = cv.error, aes(x = k, y = error)) + geom_line() + geom_point()
+```
+
+d) Repeat c) using another random seed and report your results. Are your results the same as what you got in c)? Why?
+
+Yes, the results are the same as in c) since in case of the LOOCV you leave at all observations once. So there is no randomness in splitting the file into training and test set. 
+
+e) Which of the models in c) had the smallest LOOCV error? Is this what you expected? Explain your answer.
+
+The smallest LOOCV error was found for model 2), the kwadratic model. This was to be expected since the model how the data was generated was a quadratic model. 
+
+f) Comment on the statistical significance of the coefficient estimates that results from fitting each of the models in c) using least squares. Do these results agree with the conclusions drawn based on the cross-validation results? 
+
+```{r}
+fit2 <- lm(y ~ poly(x,2), data = data)
+fit3 <- lm(y ~ poly(x,3), data = data)
+fit4 <- lm(y ~ poly(x,4), data = data)
+summary(fit2)
+summary(fit3)
+summary(fit4)
+```
+
+From the summary table we can see that the linear and quadratic term are significant for all models. The cube and fourth power term are not statistical significant. This is in line with the crossvalidation results. 
